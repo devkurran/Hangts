@@ -1,0 +1,292 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taylor Swift Hangman</title>
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    .app { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 28px; margin: 8px 0 16px; }
+    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: #666; }
+    .big { font-size: 22px; letter-spacing: 2px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    button { padding: 8px 14px; border-radius: 8px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    input[type="text"] { padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; width: 260px; }
+    .pill { display: inline-block; padding: 2px 8px; border: 1px solid #ddd; border-radius: 999px; margin-right: 6px; margin-bottom: 6px; }
+    .status { margin-top: 8px; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 720px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    pre { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Taylor Swift Hangman</h1>
+    <div class="card grid">
+      <div>
+        <div class="row">
+          <button id="newGameBtn">New game</button>
+          <div id="lives" class="pill">Lives: 6</div>
+        </div>
+        <div style="margin-top:12px;">
+          <div id="song" class="big mono">Press New game</div>
+          <div id="status" class="status"></div>
+        </div>
+        <div style="margin-top:16px;">
+          <form id="guessForm" class="row">
+            <input id="guessInput" type="text" placeholder="Guess a letter or the full title" autocomplete="off" />
+            <button type="submit">Guess</button>
+            <button type="button" id="revealBtn">Reveal</button>
+          </form>
+        </div>
+      </div>
+      <div>
+        <pre id="hangman" class="mono muted"></pre>
+        <div style="margin-top:10px;">
+          <div class="muted">Guessed letters</div>
+          <div id="guessed"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="muted">Wrong guesses</div>
+          <div id="wrongs"></div>
+        </div>
+      </div>
+    </div>
+
+    <details style="margin-top:16px;">
+      <summary>What this is</summary>
+      <div class="muted" style="margin-top:8px;">
+        Song titles are from a built-in list. Punctuation and spaces are shown. Letters and digits are hidden until guessed.
+      </div>
+    </details>
+  </div>
+
+  <py-script>
+from js import document
+from pyodide.ffi import create_proxy
+import random, re
+
+TS_SONGS = [
+    "The 1","1 Step Forward, 3 Steps Back","22","Actually Romantic","Afterglow","The Albatross","The Alchemy","The Alcott",
+    "All of the Girls You Loved Before","All Too Well","All Too Well (10 Minute Version)","All You Had to Do Was Stay",
+    "American Girl","Anti-Hero","The Archer","August","Babe","Baby (live cover of \\"Baby, Don't You Break My Heart Slow\\")",
+    "Back to December","Bad Blood","Bad Blood (single version)","Beautiful Eyes","Beautiful Ghosts","Begin Again",
+    "Bein' With My Baby","Bejeweled","The Best Day","Best Days of Your Life","Bette Davis Eyes","Better Man",
+    "Better than Revenge","Betty","Bigger Than the Whole Sky","Big Star (Live)","Birch","The Black Dog","Blank Space",
+    "The Bolter","Both of Us","Breathe","Breathless","But Daddy I Love Him","Bye Bye Baby","Call It What You Want","Cancelled!",
+    "Cardigan","Carolina","Cassandra","Castles Crumbling","Champagne Problems","Change","Chloe or Sam or Sophia or Marcus",
+    "Christmas Must Be Something More","Christmas Tree Farm","Christmases When You Were Mine","Clara Bow","Clean","Closure",
+    "Cold as You","Come Back... Be Here","Come in with the Rain","Coney Island","Cornelia Street","Cowboy like Me","Crazier",
+    "Cruel Summer","Dancing with Our Hands Tied","Daylight","Dear John","Dear Reader","Death by a Thousand Cuts","Deja Vu",
+    "Delicate","Don't Blame Me","Don't You","Dorothea","Down Bad","Dress","Drops of Jupiter (Live)","Eldest Daughter",
+    "Electric Touch","Elizabeth Taylor","Enchanted","End Game","Epiphany","Evermore","Everything Has Changed","Exile",
+    "Eyes Open","False God","The Fate of Ophelia","Father Figure","Fearless","Fifteen","Florida!!!","Foolish One",
+    "Forever & Always","Forever Winter","Fortnight","Fresh Out the Slammer","Gasoline","Getaway Car","Girl at Home","Glitch",
+    "Gold Rush","Gorgeous","The Great War","Guilty as Sin?","Half of My Heart","Happiness","Haunted","Hey Stephen",
+    "High Infidelity","Highway Don't Care","Hits Different","Hoax","Hold On","Holy Ground","Honey","How Did It End?",
+    "How You Get the Girl","I Almost Do","I Bet You Think About Me","I Can Do It with a Broken Heart","I Can See You",
+    "I Can Fix Him (No Really I Can)","I Did Something Bad","I Don't Wanna Live Forever","I Forgot That You Existed",
+    "I Hate It Here","I Heart ?","I Look in People's Windows","I Knew You Were Trouble","I Know Places","I Think He Knows",
+    "I Want You Back","I Wish You Would","If This Was a Movie","Illicit Affairs","I'm Only Me When I'm with You",
+    "Im gonna get you back","Innocent","Invisible","Invisible String","Is It Over Now?","It's Nice to Have a Friend",
+    "It's Time to Go","Ivy","The Joker and the Queen (single version)","Jump Then Fall","Karma","Karma (remixed version)",
+    "King of My Heart","Labyrinth","The Lakes","Last Christmas","The Last Great American Dynasty","Last Kiss","The Last Time",
+    "Lavender Haze","The Life of a Showgirl","Loml","London Boy","Long Live","Long Live (Brazilian version)","Long Story Short",
+    "Look What You Made Me Do","Love Story","Lover","Lover (Remix)","The Lucky One","Macavity","Mad Woman","The Man",
+    "The Manuscript","Marjorie","Maroon","Mary's Song (Oh My My My)","Mastermind","Me!","Mean","Message in a Bottle",
+    "Midnight Rain","Mine","Mirrorball","Miss Americana & the Heartbreak Prince","The Moment I Knew","Mr. Perfectly Fine",
+    "My Boy Only Breaks His Favorite Toys","My Tears Ricochet","Never Grow Up","New Romantics","New Year's Day",
+    "No Body, No Crime","Nothing New","Now That We Don't Talk","Only the Young","Opalite","The Other Side of the Door",
+    "Our Song","Ours","Out of the Woods","The Outside","Paper Rings","Paris","Peace","A Perfectly Good Heart","Peter",
+    "Picture to Burn","A Place in This World","The Prophecy","Question...?","...Ready for It?","Red","Renegade",
+    "Right Where You Left Me","Robin","Ronan","Ruin the Friendship","Run","Sad Beautiful Tragic","Safe & Sound","Santa Baby",
+    "Say Don't Go","September","Seven","Shake It Off","Should've Said No","Silent Night","'Slut!'","The Smallest Man Who Ever Lived",
+    "Snow on the Beach","So High School","So It Goes...","So Long, London","Soon You'll Get Better","Sparks Fly","Speak Now",
+    "Starlight","State of Grace","Stay Beautiful","Stay Stay Stay","The Story of Us","Style","Suburban Legends","Superman",
+    "Superstar","Sweet Nothing","Sweeter than Fiction","Teardrops on My Guitar","Tell Me Why","Thank You Aimee","That's When",
+    "This Is Me Trying","This Is What You Came For","This Is Why We Can't Have Nice Things","This Love","Tied Together with a Smile",
+    "Tim McGraw","Timeless","'Tis the Damn Season","Today Was a Fairytale","Tolerate It","The Tortured Poets Department",
+    "Treacherous","Two Is Better Than One","Umbrella","Untouchable","Us","The Very First Night","Vigilante Shit",
+    "The Way I Loved You","We Are Never Ever Getting Back Together","Welcome to New York","We Were Happy",
+    "When Emma Falls in Love","White Christmas","White Horse","Who's Afraid of Little Old Me?","Wildest Dreams","Willow","Wish List",
+    "Wonderland","Wood","Would've, Could've, Should've","You All Over Me","You Are in Love","You Belong with Me",
+    "You'll Always Find Your Way Back Home","You Need to Calm Down","You're Losing Me","You're Not Sorry","You're on Your Own, Kid",
+    "A Little More like You","Acting like a Boy","All Night Diner","Am I Ready for Love","American Boy","Angelina","Baby Blue",
+    "Beautiful Days","Better Off","Bother Me","Brand New World","Brought Up That Way","By the Way","Can I Go with You",
+    "Check Out This View","Closest to a Cowboy","Cross My Heart","Dark Blue Tennessee","Diary of Me","Don't Hate Me for Loving You",
+    "Drama Queen","Fall Back on You","Family","Fire","For You","Gail's Song","Go Slow","Gracie","Half-Way to Texas","Heaven","Her",
+    "His Lies","Honey Baby","Houston Rodeo","I Don't Want to Lose Your Face","I Used to Fly","I'd Lie","In the Pouring Rain",
+    "Just South of Knowing Why","Kid in the Crowd","Let's Go","Live for the Little Things","Long Time Going","Look at You like That",
+    "Love They Haven't Thought of Yet","Love to Lose","Lucky You","Made Up You","Mandolin","Mary Jo","Matches","Me & Britney",
+    "Missing You","My Turn to Be Me","Need","Need You Now","Never Fade","Never Mind","None of the Above","Not One Day","One More Day",
+    "One-Sided Goodbye","Perfect Have I Loved","Permanent Marker","Point of View","Pretty Words","Rain Song","Revenge","Ride On",
+    "Same Girl","Scream","Shaking Thrift Shop","Smokey Black Nights","Someone Just Told Me","Someone Loves You","Spinning Around",
+    "Stupid Boy","Sugar","Sweet Tea and God's Graces","Tell Me","Tennessee","That's Life","Thinking 'Bout You","Thirteen Blocks",
+    "This Here Guitar","This Is Really Happening","This One's Different","Today","Too Beautiful","Under My Head","Wait for Me",
+    "Welcome Distraction","What Do You Say?","What to Wear","Who I've Always Been","Wonderful Things","You","You Do",
+    "You Don't Have to Call","You Walk Away","Your Picture"
+]
+
+HANGMAN_PICS = [
+    \"\"\"
+     +---+
+     |   |
+         |
+         |
+         |
+         |
+    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n         |\n         |\n         |\n    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n     |   |\n         |\n         |\n    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n    /|   |\n         |\n         |\n    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n    /|\\  |\n         |\n         |\n    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n    /|\\  |\n    /    |\n         |\n    =========\"\"\",\n\"\"\"\n     +---+\n     |   |\n     O   |\n    /|\\  |\n    / \\  |\n         |\n    =========\"\"\"\n]
+
+# Game state
+secret_title = None
+display = []
+answer = []
+lives = 6
+wrong_guesses = []
+guessed_letters = set()
+game_over = False
+
+def normalize_title(title):
+    disp, ans = [], []
+    for ch in title:
+        if ch.isalpha() or ch.isdigit():
+            disp.append("_")
+            ans.append(ch.upper())
+        else:
+            disp.append(ch)
+            ans.append(None)
+    return disp, ans
+
+def clean_guess(s):
+    t = s.strip().replace("’","'")
+    t = re.sub(r'^\\s*["\\\']|["\\\']\\s*$', "", t)
+    t = re.sub(r"\\s+", " ", t)
+    return t.upper()
+
+def apply_letter_guess(letter):
+    global display, answer
+    hit = False
+    for i, target in enumerate(answer):
+        if target == letter:
+            display[i] = letter
+            answer[i] = None
+            hit = True
+    return hit
+
+def check_win():
+    return all(a is None for a in answer)
+
+def set_text(id_, text):
+    document.getElementById(id_).textContent = text
+
+def set_html(id_, html):
+    document.getElementById(id_).innerHTML = html
+
+def update_ui(msg=""):
+    set_text("lives", f"Lives: {lives}")
+    set_text("song", " ".join(display) if display else "Press New game")
+    set_text("hangman", HANGMAN_PICS[min(len(wrong_guesses), len(HANGMAN_PICS)-1)] if not game_over else HANGMAN_PICS[-1])
+    set_html("guessed", "".join(f'<span class="pill">{l}</span>' for l in sorted(guessed_letters)))
+    set_html("wrongs", "".join(f'<span class="pill">{w}</span>' for w in wrong_guesses))
+    set_text("status", msg)
+
+def start_game(event=None):
+    global secret_title, display, answer, lives, wrong_guesses, guessed_letters, game_over
+    secret_title = random.choice(TS_SONGS)
+    display, answer = normalize_title(secret_title)
+    lives = 6
+    wrong_guesses = []
+    guessed_letters = set()
+    game_over = False
+    update_ui("New round. Guess a letter or the full title.")
+
+def reveal(event=None):
+    global game_over, display
+    if secret_title is None: 
+        return
+    # reveal remaining letters
+    for i, a in enumerate(answer):
+        if a is not None:
+            display[i] = a
+            answer[i] = None
+    game_over = True
+    update_ui(f"Revealed: {secret_title}")
+
+def on_guess(event):
+    global lives, game_over
+    event.preventDefault()
+    if game_over or secret_title is None:
+        update_ui("Start a new game first.")
+        return
+
+    value = document.getElementById("guessInput").value
+    document.getElementById("guessInput").value = ""
+    if not value.strip():
+        update_ui("Type something to guess.")
+        return
+
+    # full-title guess
+    if len(value.strip()) > 1:
+        if clean_guess(value) == clean_guess(secret_title):
+            # Reveal all
+            for i, a in enumerate(answer):
+                if a is not None:
+                    display[i] = a
+                    answer[i] = None
+            game_over = True
+            update_ui(f"Correct. The song is: {secret_title}")
+            return
+        else:
+            wrong_guesses.append(value.strip())
+            lives -= 1
+            if lives <= 0:
+                game_over = True
+                update_ui(f"Out of lives. The song was: {secret_title}")
+            else:
+                update_ui("Not quite.")
+            return
+
+    # single letter guess
+    letter = value.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]", letter):
+        update_ui("Guess letters A-Z or digits 0-9.")
+        return
+    if letter in guessed_letters:
+        update_ui("Already tried that letter.")
+        return
+    guessed_letters.add(letter)
+
+    if apply_letter_guess(letter):
+        if check_win():
+            game_over = True
+            update_ui(f"You got it: {secret_title}")
+        else:
+            update_ui("Nice.")
+    else:
+        wrong_guesses.append(letter)
+        lives -= 1
+        if lives <= 0:
+            game_over = True
+            update_ui(f"Out of lives. The song was: {secret_title}")
+        else:
+            update_ui("Nope.")
+
+# Hook up events
+document.getElementById("newGameBtn").addEventListener("click", create_proxy(start_game))
+document.getElementById("revealBtn").addEventListener("click", create_proxy(reveal))
+document.getElementById("guessForm").addEventListener("submit", create_proxy(on_guess))
+
+# Initial UI
+update_ui("Press New game to start.")
+  </py-script>
+</body>
+</html>
